@@ -6,32 +6,28 @@ namespace SpellChanger;
 /// <summary>
 /// Class used to create a CustomSpell. Register using SpellHelper.AddSpell(CustomSpell)
 /// </summary>
-public class CustomSpell
+public abstract class CustomSpell
 {
     /// <summary>
     /// The name of the spell.
     /// </summary>
-    private string name;
+    public string name { get; }
     /// <summary>
     /// The id of the spell. Unique identifier added to state names.
     /// </summary>
-    private int id;
+    public int id { get; }
     /// <summary>
     /// The text language key of the spell's name.
     /// </summary>
-    private string nameKey;
+    public string nameKey { get; }
     /// <summary>
-    /// The sprite used for the spell icon at level 1.
+    /// The sprites used in the spell icons.
     /// </summary>
-    private Sprite spriteLevel1;
-    /// <summary>
-    /// The sprite used for the spell icon at level 2.
-    /// </summary>
-    private Sprite spriteLevel2;
+    public Sprite[] sprites { get; }
     /// <summary>
     /// The text language key for the spell's description.
     /// </summary>
-    private string descKey;
+    public string descKey { get; }
     /// <summary>
     /// The name of the starting state. Defaults to first added state.
     /// </summary>
@@ -41,39 +37,42 @@ public class CustomSpell
     /// </summary>
     private string finalState;
     /// <summary>
-    /// The FSM that will store the states given. 'SpellControl', or when created incorrectly a blank FSM
+    /// The name of the FSM that will store given states.
     /// </summary>
-    private PlayMakerFSM spellControlFSM;
+    public abstract string storedFSMName { get; }
+    /// <summary>
+    /// The FSM that will store the states given.
+    /// </summary>
+    public PlayMakerFSM storedFSM { get; }
     /// <summary>
     /// A list of the spell's state names.
     /// </summary>
-    private List<FsmState> fsmStates;
+    public List<FsmState> fsmStates { get; }
     /// <summary>
     /// The type of spell it is. (Fireball, Scream, Quake)
     /// </summary>
-    private string spellType;
+    public abstract string spellType { get; }
     /// <summary>
     /// MP Cost of the spell. If -1, use base game values.
     /// </summary>
-    private int mpCost;
+    public int mpCost { get; set; }
     /// <summary>
     /// The state in which MP is drained. If null, use starting state of the spell.
     /// </summary>
-    private FsmState mpCostState;
+    public FsmState mpCostState { get; set; }
     /// <summary>
     /// Whether or not the spell has been unlocked.
     /// </summary>
-    private bool unlocked;
+    internal bool unlocked { get; set; }
 
     /// <summary>
-    /// Constructor method for CustomSpell. Create during the 'OnSpellControlLoad' event hook, or it will not be able to be added to the moveset.
+    /// Constructor method for CustomSpell. Create during one of the event hooks added with the mod.
     /// </summary>
-    public CustomSpell(string name, string nameKey, string descKey, Sprite spriteLevel1, Sprite spriteLevel2)
+    public CustomSpell(string name, string nameKey, string descKey, Sprite[] sprites)
     {
         this.name = name;
         this.nameKey = nameKey;
-        this.spriteLevel1 = spriteLevel1;
-        this.spriteLevel2 = spriteLevel2;
+        this.sprites = sprites;
         this.descKey = descKey;
         id = SpellHelper.GenerateId();
         mpCost = -1;
@@ -81,11 +80,11 @@ public class CustomSpell
 
         fsmStates = new List<FsmState>();
 
-        spellControlFSM = HeroController.instance.spellControl;
-        if (HeroController.instance.spellControl == null)
+        storedFSM = HeroController.instance.gameObject.LocateMyFSM(storedFSMName);
+        if (storedFSM == null)
         {
             Modding.Logger.LogError($"CustomSpell {name} created outside of 'OnSpellControlLoad' hook. May not be registered correctly.");
-            spellControlFSM = SpellHelper.SpellFSMStoreObject.AddComponent<PlayMakerFSM>();
+            storedFSM = SpellHelper.SpellFSMStoreObject.AddComponent<PlayMakerFSM>();
         }
     }
 
@@ -94,7 +93,7 @@ public class CustomSpell
     /// </summary>
     public FsmState CreateState(string stateName)
     {
-        FsmState state = spellControlFSM.CreateState(stateName+id);
+        FsmState state = storedFSM.CreateState(stateName+id);
         fsmStates.Add(state);
         return state;
     }
@@ -105,7 +104,7 @@ public class CustomSpell
     public FsmState CopyStateActions(string copyState, string newStateName)
     {
         FsmState state = CreateState(newStateName); //dont add id here, its added in CreateState
-        FsmState stateToCopy = spellControlFSM.GetState(copyState);
+        FsmState stateToCopy = storedFSM.GetState(copyState);
 
         if (stateToCopy == null) { Modding.Logger.Log($"Attempted to copy a non existent state '{copyState}'"); return state; }
         //copy actions
@@ -128,10 +127,10 @@ public class CustomSpell
             return;
         }
 
-        FsmEvent @event = spellControlFSM.GetFsmEvent(eventName);
+        FsmEvent @event = storedFSM.GetFsmEvent(eventName);
         if (@event == null)
         {
-            @event = spellControlFSM.CreateFsmEvent(eventName);
+            @event = storedFSM.CreateFsmEvent(eventName);
         }
 
         fromState.AddTransition(@event, toState);
@@ -150,10 +149,10 @@ public class CustomSpell
             return;
         }
 
-        FsmEvent @event = spellControlFSM.GetFsmEvent(eventName);
+        FsmEvent @event = storedFSM.GetFsmEvent(eventName);
         if (@event == null)
         {
-            @event = spellControlFSM.CreateFsmEvent(eventName);
+            @event = storedFSM.CreateFsmEvent(eventName);
         }
 
         fromState.ChangeTransition(eventName, to + id);
@@ -173,55 +172,6 @@ public class CustomSpell
     public void SetFinalState(string stateName)
     {
         finalState = stateName+id;
-    }
-    /// <summary>
-    /// Sets the MP cost of the spell. Defaults to base game values. If you change this, add your own logic for taking MP from the player.
-    /// </summary>
-    public void SetMPCost(int MPCost)
-    {
-        mpCost = MPCost;
-    }
-    /// <summary>
-    /// Sets whether or not the spell has been unlocked for use. Defaults to unlocked. If locked, add your own logic for unlocking it.
-    /// </summary>
-    internal void SetUnlocked(bool Unlocked)
-    {
-        unlocked = Unlocked;
-    }
-    /// <summary>
-    /// Sets the state in which MP is drained. Defaults to the starting state of the spell. To disable, call CustomSpell.SetMPCost(0), then add your own logic.
-    /// </summary>
-    public void SetMPCostState(FsmState MPCostState)
-    {
-        mpCostState = MPCostState;
-    }
-    /// <summary>
-    /// Binds spell input type to Fireball.
-    /// </summary>
-    public void BindToFireball()
-    {
-        spellType = "Fireball";
-    }
-    /// <summary>
-    /// Binds spell input type to Scream.
-    /// </summary>
-    public void BindToScream()
-    {
-        spellType = "Scream";
-    }
-    /// <summary>
-    /// Binds spell input type to Quake.
-    /// </summary>
-    public void BindToQuake()
-    {
-        spellType = "Quake";
-    }
-    /// <summary>
-    /// Returns spell type.
-    /// </summary>
-    public string GetSpellType()
-    {
-        return spellType;
     }
     /// <summary>
     /// Returns starting state. Defaults to first added state if not set.
@@ -244,69 +194,6 @@ public class CustomSpell
             return fsmStates[fsmStates.Count - 1].Name;
         }
         return finalState;
-    }
-    /// <summary>
-    /// Returns spell name.
-    /// </summary>
-    public string GetName()
-    {
-        return name;
-    }
-    /// <summary>
-    /// Returns text language key of the spell name.
-    /// </summary>
-    public string GetNameKey()
-    {
-        return nameKey;
-    }
-    /// <summary>
-    /// Returns text language key of the spell description.
-    /// </summary>
-    public string GetDescKey()
-    {
-        return descKey;
-    }
-    /// <summary>
-    /// Returns level 1 sprite icon.
-    /// </summary>
-    public Sprite GetSpriteLevel1()
-    {
-        return spriteLevel1;
-    }
-    /// <summary>
-    /// Returns level 2 sprite icon
-    /// </summary>
-    public Sprite GetSpriteLevel2()
-    {
-        return spriteLevel2;
-    }
-    /// <summary>
-    /// Returns MP Cost, or -1 if not set. If -1, use base game values.
-    /// </summary>
-    public int GetMPCost()
-    {
-        return mpCost;
-    }
-    /// <summary>
-    /// Returns the state in which MPCost is drained, or null if not set. If null, defaults to starting state.
-    /// </summary>
-    public FsmState GetMPCostState()
-    {
-        return mpCostState;
-    }
-    /// <summary>
-    /// Returns the FSM used to store the spell's states. Usually 'Spell Control', or a blank FSM when the class is incorrectly created.
-    /// </summary>
-    public PlayMakerFSM GetStoreFSM()
-    {
-        return spellControlFSM;
-    }
-    /// <summary>
-    /// Returns whether or not the spell is unlocked.
-    /// </summary>
-    public bool GetUnlocked()
-    {
-        return unlocked;
     }
 
 }

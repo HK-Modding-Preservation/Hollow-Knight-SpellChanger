@@ -1,11 +1,34 @@
 ﻿using HutongGames.PlayMaker.Actions;
 using SpellChanger.Utils;
+using System.Drawing;
+using UnityEngine;
 using Vasi;
 
 namespace SpellChanger;
 
 internal class InventoryPatcher
 {
+    internal static Dictionary<string, string> baseNAStrings = new Dictionary<string, string>()
+    {
+        { AbilityNames.DASHSLASH, "UPPER" },
+        { AbilityNames.CYCLONESLASH, "CYCLONE" },
+        { AbilityNames.GREATSLASH, "DASH" }
+    };
+    internal static Dictionary<string, string> NAIconStrings = new Dictionary<string, string>()
+    {
+        { AbilityNames.DASHSLASH, "Uppercut" },
+        { AbilityNames.CYCLONESLASH, "Cyclone" },
+        { AbilityNames.GREATSLASH, "Dash" }
+    };
+    internal static Sprite cycloneIcon;
+    internal static Sprite dashIcon;
+    internal static Sprite greatIcon;
+    internal static Dictionary<string, Sprite> regularNAIcons = new Dictionary<string, Sprite>()
+    {
+        { AbilityNames.DASHSLASH, cycloneIcon },
+        { AbilityNames.CYCLONESLASH, dashIcon },
+        { AbilityNames.GREATSLASH, greatIcon }
+    };
     /// <summary>
     /// Constructs the helper, hooks needed methods.
     /// </summary>
@@ -21,9 +44,13 @@ internal class InventoryPatcher
 
         if (self.gameObject.name != "Inv" || self.FsmName != "UI Inventory") { return; }
 
+
         AddSpellCycle("Scream", self);
         AddSpellCycle("Quake", self);
         AddSpellCycle("Fireball", self);
+        AddSpellCycle("Dash Slash", self);
+        AddSpellCycle("Cyclone", self);
+        AddSpellCycle("Uppercut", self);
 
         PatchInventoryIcons("Scream", self);
         PatchInventoryIcons("Quake", self);
@@ -34,17 +61,46 @@ internal class InventoryPatcher
     private static void AddSpellCycle(string type, PlayMakerFSM UiInventoryFSM)
     {
         FsmState slotState = UiInventoryFSM.GetState(type);
-        if (slotState == null) { LogError("Inventory slot for spell not found when creating cycle."); return; }
+        if (slotState == null) { LogError("Inventory slot for spell " + type + " not found when creating cycle."); return; }
+
+        //these contrarian bastards at team cherry made the great slash slot dash slash
+        // and the dash slash slot uppercut
+        // so i have to do this nonsense
+        if (type == "Dash Slash")
+        {
+            type = AbilityNames.GREATSLASH;
+        }
+        if (type == "Uppercut")
+        {
+            type = AbilityNames.DASHSLASH;
+        }
+        if (type == "Cyclone")
+        {
+            type = AbilityNames.CYCLONESLASH;
+        }
+
+        regularNAIcons[AbilityNames.GREATSLASH] = GetIconNA(AbilityNames.GREATSLASH, UiInventoryFSM).GetComponent<SpriteRenderer>().sprite;
+        regularNAIcons[AbilityNames.CYCLONESLASH] = GetIconNA(AbilityNames.CYCLONESLASH, UiInventoryFSM).GetComponent<SpriteRenderer>().sprite;
+        regularNAIcons[AbilityNames.DASHSLASH] = GetIconNA(AbilityNames.DASHSLASH, UiInventoryFSM).GetComponent<SpriteRenderer>().sprite;
 
         FsmState slotConfirm = UiInventoryFSM.CreateState(type + " Confirm");
-        slotConfirm.AddMethod(() => { 
+        slotConfirm.AddMethod(() => {
             CycleSpell(type); 
-            UpdateInventoryText(type, slotState);
-            //to update icon
-            PlayMakerFSM checkActive = GetIconFSM(type, UiInventoryFSM);
-            if (checkActive == null) { return; }
+            if (AbilityNames.NAILARTSNAMES.Contains(type))
+            {
+                UpdateInventoryTextNA(type, slotState);
+                UpdateInventoryIconsNA(type, UiInventoryFSM);
+            }
+            if (AbilityNames.SPELLCONTROLNAMES.Contains(type))
+            {
+                UpdateInventoryText(type, slotState);
 
-            checkActive.SetState("Appear?");
+                //to update icon
+                PlayMakerFSM checkActive = GetIconFSM(type, UiInventoryFSM);
+                if (checkActive == null) { return; }
+
+                checkActive.SetState("Appear?");
+            }
         });
 
         FsmEvent UIConfirm = UiInventoryFSM.GetFsmEvent("UI CONFIRM");
@@ -56,13 +112,13 @@ internal class InventoryPatcher
 
     private static void CycleSpell(string type)
     {
-        if (type != "Scream" && type != "Fireball" && type != "Quake") {
+        if (!AbilityNames.ALLNAMES.Contains(type)) {
             LogError("Attempted to cycle non-existent spell type.");
             return;
         }
 
         List<CustomSpell> spells = SpellHelper.GetSpellsOfType(type);
-        if (spells.Count == 0) { return; } //No available spells to cycle
+        if (spells.Count == 0) { LogError("No spells"); return; } //No available spells to cycle
 
         CustomSpell equippedSpell;
         SpellHelper.equippedSpells.TryGetValue(type, out equippedSpell);
@@ -70,30 +126,30 @@ internal class InventoryPatcher
         if (equippedSpell == null) //Player has base spell equipped, cycle to first custom
         {
             CustomSpell firstCustomSpell = spells[0];
-            SpellHelper.EquipCustomSpell(firstCustomSpell);
+            SpellHelper.ForceEquipCustomSpell(firstCustomSpell);
             return;
         } 
 
         if (index == -1) //equipped spell not found
         {
             LogError($"Equipped {type} spell not found in Custom Spell list. Returning to base spell.");
-            SpellHelper.EquipBaseSpell(type);
+            SpellHelper.ForceEquipBaseSpell(type);
             return;
         }
 
         //Cycle
         if (index == spells.Count - 1) //Return to base spell when at final spell in list
         {
-            SpellHelper.EquipBaseSpell(type);
+            SpellHelper.ForceEquipBaseSpell(type);
             return;
         }
 
         //cycle to next spell in list
         CustomSpell spellToEquip = spells[index + 1];
-        SpellHelper.EquipCustomSpell(spellToEquip);
+        SpellHelper.ForceEquipCustomSpell(spellToEquip);
     }
 
-    private static PlayMakerFSM GetIconFSM(string type, PlayMakerFSM UiInventoryFSM)
+    private static GameObject GetIcon(PlayMakerFSM UiInventoryFSM, string type)
     {
         if (UiInventoryFSM == null) { return null; }
 
@@ -102,13 +158,54 @@ internal class InventoryPatcher
 
         if (InvItems == null) { LogError("Inv_Items Gameobject not found when updating icons of type " + type); return null; }
 
-        GameObject spellIcon = InvItems.Child("Spell " + type);
-        if (spellIcon == false) { LogError("Spell icon " + type + " not found."); return null; }
+        GameObject Icon = InvItems.Child(type);
+        if (Icon == null) { LogError("Spell icon " + type + " not found."); return null; }
+
+        return Icon;
+    }
+
+    private static PlayMakerFSM GetIconFSM(string type, PlayMakerFSM UiInventoryFSM)
+    {
+        GameObject spellIcon = GetIcon(UiInventoryFSM, "Spell " + type);
+
+        if (spellIcon == null) { return null; } //error already sent by GetIcon
 
         PlayMakerFSM checkActive = spellIcon.LocateMyFSM("Check Active");
-        if (checkActive == false) { LogError("Check Active FSM not found when updating icons of type " + type); return null; }
+        if (checkActive == null) { LogError("Check Active FSM not found when updating icons of type " + type); return null; }
 
         return checkActive;
+    }
+
+    private static GameObject GetIconNA(string type, PlayMakerFSM UiInventoryFSM)
+    {
+        string typeNA = NAIconStrings[type];
+
+        if (typeNA == null) { LogError("Icon type " + type + "not found."); }
+
+        GameObject Icon = GetIcon(UiInventoryFSM, "Art " + typeNA);
+
+        return Icon;
+    }
+
+    private static void UpdateInventoryIconsNA(string type, PlayMakerFSM UiInventoryFSM)
+    {
+        GameObject NAIcon = GetIconNA(type, UiInventoryFSM);
+
+        if (NAIcon == null) { return; } //Errors handled in GetIconNA
+
+        SpriteRenderer renderer = NAIcon.GetComponent<SpriteRenderer>();
+        if (renderer == null) { LogError("SpriteRenderer not found in icon " + type); return; }
+
+        CustomSpell equippedSpell = SpellHelper.equippedSpells[type];
+        if (equippedSpell == null) { 
+            renderer.sprite = regularNAIcons[type];
+            return;
+        }
+
+        renderer.sprite = equippedSpell.sprites[0];
+
+        InvItemDisplay display = NAIcon.GetComponent<InvItemDisplay>();
+        display.activeSprite = equippedSpell.sprites[0];
     }
 
     private static void PatchInventoryIcons(string type, PlayMakerFSM UiInventoryFSM)
@@ -130,7 +227,7 @@ internal class InventoryPatcher
             SpriteRenderer renderer = spellIcon.GetComponent<SpriteRenderer>();
             if (renderer == null) { LogError("SpriteRenderer of icon " + type + " not found."); return; }
 
-            renderer.sprite = equippedSpell.GetSpriteLevel1();
+            renderer.sprite = equippedSpell.sprites[0];
         });
 
         level2State.AddMethod(() => {
@@ -140,8 +237,46 @@ internal class InventoryPatcher
             SpriteRenderer renderer = spellIcon.GetComponent<SpriteRenderer>();
             if (renderer == null) { LogError("SpriteRenderer of icon " + type + " not found."); return; }
 
-            renderer.sprite = equippedSpell.GetSpriteLevel2();
+            renderer.sprite = equippedSpell.sprites[1];
         });
+    }
+
+    private static void UpdateInventoryTextNA(string type, FsmState inventorySlotState)
+    {
+        if (inventorySlotState == null) { return; }
+
+        SetFsmString setstringName = inventorySlotState.GetAction<SetFsmString>(2);
+        SetFsmString setstringDesc = inventorySlotState.GetAction<SetFsmString>(3);
+
+        if (setstringName == null || setstringDesc == null)
+        {
+            LogError("SetFsmString action not found when updating Inventory text.");
+            return;
+        }
+
+        CustomSpell equippedSpell;
+        SpellHelper.equippedSpells.TryGetValue(type, out equippedSpell);
+
+        if (equippedSpell == null)
+        {
+            setstringName.setValue = "INV_NAME_ART_" + baseNAStrings[type];
+            setstringDesc.setValue = "INV_DESC_ART_" + baseNAStrings[type];
+        }
+        else
+        {
+            setstringName.setValue = equippedSpell.nameKey;
+            setstringDesc.setValue = equippedSpell.descKey;
+        }
+
+        UpdateTextEvent(inventorySlotState);
+    }
+
+    private static void UpdateTextEvent(FsmState inventorySlotState)
+    {
+        //update text
+        PlayMakerFSM UpdateTextFSM = inventorySlotState.Fsm.GameObject.LocateMyFSM("Update Text");
+        if (UpdateTextFSM == null) { LogError("Update Text FSM not found"); return; }
+        UpdateTextFSM.SendEvent("UPDATE TEXT");
     }
 
     private static void UpdateInventoryText(string type, FsmState inventorySlotState)
@@ -166,14 +301,11 @@ internal class InventoryPatcher
             buildstringDesc.stringParts[0] = "INV_DESC_SPELL_" + type.ToUpper();
         } else
         {
-            buildstringName.stringParts[0] = equippedSpell.GetNameKey();
-            buildstringDesc.stringParts[0] = equippedSpell.GetDescKey();
+            buildstringName.stringParts[0] = equippedSpell.nameKey;
+            buildstringDesc.stringParts[0] = equippedSpell.descKey;
         }
 
-        //update text
-        PlayMakerFSM UpdateTextFSM = inventorySlotState.Fsm.GameObject.LocateMyFSM("Update Text");
-        if (UpdateTextFSM == null) { LogError("Update Text FSM not found"); return; }
-        UpdateTextFSM.SendEvent("UPDATE TEXT");
+        UpdateTextEvent(inventorySlotState);
     }
 
     /// <summary>

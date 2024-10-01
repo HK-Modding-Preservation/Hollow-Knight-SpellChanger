@@ -8,15 +8,39 @@ public static class SpellHelper
     internal static GameObject SpellFSMStoreObject = new GameObject("SpellFsmStoreObject");
     internal static Dictionary<string, CustomSpell> equippedSpells = new Dictionary<string, CustomSpell>()
     {
-        { "Scream", null },
-        { "Fireball", null },
-        { "Quake", null }
+        { AbilityNames.SCREAM, null },
+        { AbilityNames.FIREBALL, null },
+        { AbilityNames.QUAKE, null },
+        { AbilityNames.DASHSLASH, null },
+        { AbilityNames.CYCLONESLASH, null },
+        { AbilityNames.GREATSLASH, null }
     };
     internal static Dictionary<string, string> baseSpellStates = new Dictionary<string, string>()
     {
-        { "Scream", "Scream Get?" },
-        { "Fireball", "Wallside?" },
-        { "Quake", "On Ground?" }
+        { AbilityNames.SCREAM, "Scream Get?" },
+        { AbilityNames.FIREBALL, "Wallside?" },
+        { AbilityNames.QUAKE, "On Ground?" },
+        { AbilityNames.DASHSLASH, "DSlash Start" },
+        { AbilityNames.CYCLONESLASH, "Flash" },
+        { AbilityNames.GREATSLASH, "Flash 2" }
+    };
+    internal static Dictionary<string, string> baseSpellEvents = new Dictionary<string, string>()
+    {
+        { AbilityNames.SCREAM, "CAST" },
+        { AbilityNames.FIREBALL, "CAST" },
+        { AbilityNames.QUAKE, "CAST" },
+        { AbilityNames.DASHSLASH, "DASH END" },
+        { AbilityNames.CYCLONESLASH, "FINISHED" },
+        { AbilityNames.GREATSLASH, "FINISHED" }
+    };
+    internal static Dictionary<string, string> baseHasStateNames = new Dictionary<string, string>()
+    {
+        { AbilityNames.SCREAM, "Scream" },
+        { AbilityNames.FIREBALL, "Fireball" },
+        { AbilityNames.QUAKE, "Quake" },
+        { AbilityNames.DASHSLASH, "Dash" },
+        { AbilityNames.CYCLONESLASH, "Cyclone" },
+        { AbilityNames.GREATSLASH, "G Slash" }
     };
 
     internal static int idCounter = 0;
@@ -35,23 +59,34 @@ public static class SpellHelper
     static SpellHelper()
     {
         On.PlayMakerFSM.Awake += OnPlayMakerFsmAwake;
+        On.PlayMakerFSM.Awake += OnPlayMakerFsmAwakeNA;
     }
 
     internal static void ClearSpellList()
     {
-        _customSpells.Clear();
-        EquipBaseSpell("Scream");
-        EquipBaseSpell("Quake");
-        EquipBaseSpell("Fireball");
+        _customSpells.RemoveAll(x => AbilityNames.SPELLCONTROLNAMES.Contains(x.spellType));
+
+        ForceEquipBaseSpell(AbilityNames.FIREBALL);
+        ForceEquipBaseSpell(AbilityNames.QUAKE);
+        ForceEquipBaseSpell(AbilityNames.SCREAM);
+    }
+
+    internal static void ClearSpellListNA()
+    {
+        _customSpells.RemoveAll(x => AbilityNames.NAILARTSNAMES.Contains(x.spellType));
+
+        ForceEquipBaseSpell(AbilityNames.DASHSLASH);
+        ForceEquipBaseSpell(AbilityNames.CYCLONESLASH);
+        ForceEquipBaseSpell(AbilityNames.GREATSLASH);
     }
 
     /// <summary>
     /// Initialises CustomSpells into the game.
     /// </summary>
-    private static void SetupSpell(PlayMakerFSM spellControl, CustomSpell spell)
+    private static void SetupSpell(CustomSpell spell)
     {
-        PlayMakerFSM fsm = spell.GetStoreFSM();
-        string name = spell.GetName();
+        PlayMakerFSM fsm = spell.storedFSM;
+        string name = spell.name;
         if (fsm == null)
         {
             LogError($"Spell {name} not added, created when the 'Spell Control' FSM did not exist - Use the 'OnSpellControlLoad' event hook.");
@@ -59,7 +94,7 @@ public static class SpellHelper
         }
 
         string finalName = spell.GetFinalState();
-        FsmState finalState = spellControl.GetState(finalName);
+        FsmState finalState = fsm.GetState(finalName);
         if (finalState == null)
         {
             LogError($"Spell {name} not added, final state not found.");
@@ -67,15 +102,15 @@ public static class SpellHelper
         }
 
         string startingName = spell.GetStartingState();
-        FsmState startingState = spellControl.GetState(startingName);
+        FsmState startingState = fsm.GetState(startingName);
         if (startingState == null)
         {
             LogError($"Spell {name} not added, starting state not found.");
             return;
         }
 
-        FsmState MPCostState = spell.GetMPCostState();
-        int MPCost = spell.GetMPCost();
+        FsmState MPCostState = spell.mpCostState;
+        int MPCost = spell.mpCost;
 
         if (MPCostState == null)
         {
@@ -84,20 +119,29 @@ public static class SpellHelper
 
         if (MPCost == -1)
         {
-            AddMPCostMethod(MPCostState);
+            AddMPCostMethod(spell, MPCostState);
         }
 
-        finalState.AddTransition(FsmEvent.Finished, "Spell End");
+        string finalstate = "Spell End";
+        if (AbilityNames.NAILARTSNAMES.Contains(spell.spellType)) {
+            finalstate = "Regain Control";
+        }
+
+        finalState.AddTransition(FsmEvent.Finished, finalstate);
     }
 
-    private static void AddMPCostMethod(FsmState MPCostState)
+    private static void AddMPCostMethod(CustomSpell spell, FsmState MPCostState)
     {
-        PlayMakerFSM spellControl = HeroController.instance.spellControl;
+        PlayMakerFSM spellControl = spell.storedFSM;
         if (spellControl == null) { return; }
 
         MPCostState.InsertMethod(0, () => {
             FsmInt MPCostInt = spellControl.FsmVariables.GetFsmInt("MP Cost");
             int MPVal = MPCostInt.Value;
+            if (spell.mpCost != -1)
+            {
+                MPVal = spell.mpCost;
+            }
             HeroController.instance.TakeMP(MPVal);
         });
     }
@@ -115,59 +159,107 @@ public static class SpellHelper
         List<CustomSpell> spellsofType = new List<CustomSpell>();
         foreach (CustomSpell spell in _customSpells)
         {
-            if (spell.GetSpellType() != type) { continue; }
-            if (spell.GetUnlocked() == false) { continue; }
+            if (spell.spellType != type) { continue; }
+            if (spell.unlocked == false) { continue; }
             spellsofType.Add(spell);
         }
 
         return spellsofType;
     }
 
-    internal static void EquipCustomSpell(CustomSpell spell)
+    private static string getFSMName(string spellType)
+    {
+        string fsmName = "";
+
+        if (AbilityNames.NAILARTSNAMES.Contains(spellType))
+        {
+            fsmName = AbilityFSMs.NAILARTS;
+        }
+        if (AbilityNames.SPELLCONTROLNAMES.Contains(spellType))
+        {
+            fsmName = AbilityFSMs.SPELLCONTROL;
+        }
+
+        if (fsmName == "") { LogError("Fsm Type not found when equipping spell of type " + spellType);}
+
+        return fsmName;
+    }
+
+    public static void ForceEquipCustomSpell(CustomSpell spell)
     {
         CustomSpell checkSpell = _customSpells.Find((CustomSpell check) => check == spell);
         if (checkSpell == null) { return; }
 
-        string spellType = spell.GetSpellType();
-        string state = "Has " + spellType + "?";
+        string spellType = spell.spellType;
+        string eventAddon = baseHasStateNames[spellType];
+        if (eventAddon == null) { LogError("'Has?' state equivalent not found for spell type " + spellType); return; }
+        string state = "Has " + eventAddon + "?";
 
-        PlayMakerFSM spellcontrol = HeroController.instance.spellControl;
-        FsmState activeState = spellcontrol.GetState(state);
+        if (spellType == AbilityNames.DASHSLASH) //cause team cherry hates consistency
+        {
+            state = "Dash Slash Ready";
+        }
+
+        string fsmName = getFSMName(spellType);
+        if (fsmName == "") {LogError("Spell "+ spell.name + " not equipped."); return; }
+
+        PlayMakerFSM fsm = HeroController.instance.gameObject.LocateMyFSM(fsmName);
+        FsmState activeState = fsm.GetState(state);
         if (activeState == null) { return; }
 
-        activeState.ChangeTransition("CAST", spell.GetStartingState());
+        activeState.ChangeTransition(baseSpellEvents[spellType], spell.GetStartingState());
         equippedSpells[spellType] = spell;
     }
 
-    internal static void EquipBaseSpell(string spellType)
+    public static void ForceEquipBaseSpell(string spellType)
     {
-        string state = "Has " + spellType + "?";
+        string eventAddon = baseHasStateNames[spellType];
+        if (eventAddon == null) { LogError("'Has?' state equivalent not found for spell type " + spellType); return; }
+        string state = "Has " + eventAddon + "?";
 
-        PlayMakerFSM spellcontrol = HeroController.instance.spellControl;
-        FsmState activeState = spellcontrol.GetState(state);
+        if (spellType == AbilityNames.DASHSLASH) //cause team cherry hates consistency
+        {
+            state = "Dash Slash Ready";
+        }
+
+        string fsmName = getFSMName(spellType);
+        if (fsmName == "") { LogError("Base Spell " + spellType + " not equipped."); return; }
+
+        PlayMakerFSM fsm = HeroController.instance.gameObject.LocateMyFSM(fsmName);
+        FsmState activeState = fsm.GetState(state);
         if (activeState == null) { return; }
 
-        activeState.ChangeTransition("CAST", baseSpellStates[spellType]);
+        activeState.ChangeTransition(baseSpellEvents[spellType], baseSpellStates[spellType]);
         equippedSpells[spellType] = null;
     }
 
     /// <summary>
     /// Adds all stored spells into 'Spell Control' FSM
     /// </summary>
-    private static void LoadSpells(PlayMakerFSM spellControl)
+    private static void LoadSpells()
     {
         foreach (CustomSpell spell in _customSpells)
         {
-            SetupSpell(spellControl, spell);
+            if (!AbilityNames.SPELLCONTROLNAMES.Contains(spell.spellType)) { continue; }
+            SetupSpell(spell);
+        }
+    }
+
+    private static void LoadNA()
+    {
+        foreach (CustomSpell spell in _customSpells)
+        {
+            if (!AbilityNames.NAILARTSNAMES.Contains(spell.spellType)) { continue; }
+            SetupSpell(spell);
         }
     }
 
     public static void SetSpellUnlocked(CustomSpell spell, bool unlocked)
     {
         CustomSpell checkSpell = _customSpells.Find((CustomSpell check) => check == spell);
-        if (checkSpell == null) { LogError("Spell " + spell.GetName() + " not found"); return; }
+        if (checkSpell == null) { LogError("Spell " + spell.name + " not found"); return; }
 
-        checkSpell.SetUnlocked(unlocked);
+        checkSpell.unlocked = unlocked;
     }
 
     /// <summary>
@@ -197,7 +289,34 @@ public static class SpellHelper
 
         try
         {
-            LoadSpells(self);
+            LoadSpells();
+        }
+        catch (Exception e)
+        {
+            LogError($"Error in LoadSpells function:\n{e}");
+            throw;
+        }
+    }
+
+    private static void OnPlayMakerFsmAwakeNA(On.PlayMakerFSM.orig_Awake orig, PlayMakerFSM self)
+    {
+        orig(self);
+
+        if (self.gameObject.name != "Knight" || self.FsmName != "Nail Arts") { return; }
+
+        try
+        {
+            Events.NailArtsLoaded();
+        }
+        catch (Exception e)
+        {
+            LogError($"Error in OnNailArtsLoaded event:\n{e}");
+            throw;
+        }
+
+        try
+        {
+            LoadNA();
         }
         catch (Exception e)
         {
@@ -211,8 +330,8 @@ public static class SpellHelper
     /// </summary>
     public static void AddSpell(CustomSpell customSpell, bool unlocked)
     {
-        LogDebug($"Adding spell '{customSpell.GetName()}'");
-        customSpell.SetUnlocked(unlocked);
+        LogDebug($"Adding spell '{customSpell.name}'");
+        customSpell.unlocked = unlocked;
         _customSpells.Add(customSpell);
     }
 
