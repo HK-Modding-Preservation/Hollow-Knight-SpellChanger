@@ -12,4 +12,5 @@ The main rules to remember are:
 
 -All states made using this library have a unique id appended to the end of their name that you do not have access to. To get around this, create all states for custom spells using the library functions instead of directly editing FSMs. Also, if you need to use a state name made within a CustomSpell object, remember to account for the id appended to the end.
 
+-Create and register all CustomSpell objects within their respective event hook OnSpellControlLoad and OnNailArtControlLoad. This one is the most important. If you don't, it likely will not work.
 
