@@ -89,7 +89,7 @@ public static class SpellHelper
         string name = spell.name;
         if (fsm == null)
         {
-            LogError($"Spell {name} not added, created when the 'Spell Control' FSM did not exist - Use the 'OnSpellControlLoad' event hook.");
+            LogError($"Spell {name} not added, created when the 'Spell Control' FSM did not exist - Use the 'OnSpellControlLoad' or 'OnNailArtLoaded' event hook.");
             return;
         }
 
@@ -326,7 +326,7 @@ public static class SpellHelper
     }
 
     /// <summary>
-    /// Adds a spell to the private store. MUST BE USED WITHIN 'OnSpellControlLoad' EVENT HOOK.
+    /// Adds a spell to the private store. MUST BE USED WITHIN 'OnSpellControlLoad' OR 'OnNailArtLoaded' EVENT HOOK.
     /// </summary>
     public static void AddSpell(CustomSpell customSpell, bool unlocked)
     {
