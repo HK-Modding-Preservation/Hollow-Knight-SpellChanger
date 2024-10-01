@@ -15,33 +15,7 @@ public static class SpellHelper
         { AbilityNames.CYCLONESLASH, null },
         { AbilityNames.GREATSLASH, null }
     };
-    internal static Dictionary<string, string> baseSpellStates = new Dictionary<string, string>()
-    {
-        { AbilityNames.SCREAM, "Scream Get?" },
-        { AbilityNames.FIREBALL, "Wallside?" },
-        { AbilityNames.QUAKE, "On Ground?" },
-        { AbilityNames.DASHSLASH, "DSlash Start" },
-        { AbilityNames.CYCLONESLASH, "Flash" },
-        { AbilityNames.GREATSLASH, "Flash 2" }
-    };
-    internal static Dictionary<string, string> baseSpellEvents = new Dictionary<string, string>()
-    {
-        { AbilityNames.SCREAM, "CAST" },
-        { AbilityNames.FIREBALL, "CAST" },
-        { AbilityNames.QUAKE, "CAST" },
-        { AbilityNames.DASHSLASH, "DASH END" },
-        { AbilityNames.CYCLONESLASH, "FINISHED" },
-        { AbilityNames.GREATSLASH, "FINISHED" }
-    };
-    internal static Dictionary<string, string> baseHasStateNames = new Dictionary<string, string>()
-    {
-        { AbilityNames.SCREAM, "Scream" },
-        { AbilityNames.FIREBALL, "Fireball" },
-        { AbilityNames.QUAKE, "Quake" },
-        { AbilityNames.DASHSLASH, "Dash" },
-        { AbilityNames.CYCLONESLASH, "Cyclone" },
-        { AbilityNames.GREATSLASH, "G Slash" }
-    };
+    
 
     internal static int idCounter = 0;
     /// <summary>
@@ -185,20 +159,28 @@ public static class SpellHelper
         return fsmName;
     }
 
-    public static void ForceEquipCustomSpell(CustomSpell spell)
+    private static string GetHasStateName(string spellType)
     {
-        CustomSpell checkSpell = _customSpells.Find((CustomSpell check) => check == spell);
-        if (checkSpell == null) { return; }
-
-        string spellType = spell.spellType;
-        string eventAddon = baseHasStateNames[spellType];
-        if (eventAddon == null) { LogError("'Has?' state equivalent not found for spell type " + spellType); return; }
+        string eventAddon = AbilityFSMs.baseHasStateNames[spellType];
+        if (eventAddon == null) { LogError("'Has?' state equivalent not found for spell type " + spellType); return ""; }
         string state = "Has " + eventAddon + "?";
 
         if (spellType == AbilityNames.DASHSLASH) //cause team cherry hates consistency
         {
             state = "Dash Slash Ready";
         }
+
+        return state;
+    }
+
+    public static void ForceEquipCustomSpell(CustomSpell spell)
+    {
+        CustomSpell checkSpell = _customSpells.Find((CustomSpell check) => check == spell);
+        if (checkSpell == null) { return; }
+
+        string spellType = spell.spellType;
+
+        string state = GetHasStateName(spellType);
 
         string fsmName = getFSMName(spellType);
         if (fsmName == "") {LogError("Spell "+ spell.name + " not equipped."); return; }
@@ -207,20 +189,16 @@ public static class SpellHelper
         FsmState activeState = fsm.GetState(state);
         if (activeState == null) { return; }
 
-        activeState.ChangeTransition(baseSpellEvents[spellType], spell.GetStartingState());
+        activeState.ChangeTransition(AbilityFSMs.baseSpellEvents[spellType], spell.GetStartingState());
         equippedSpells[spellType] = spell;
     }
 
     public static void ForceEquipBaseSpell(string spellType)
     {
-        string eventAddon = baseHasStateNames[spellType];
+        string eventAddon = AbilityFSMs.baseHasStateNames[spellType];
         if (eventAddon == null) { LogError("'Has?' state equivalent not found for spell type " + spellType); return; }
-        string state = "Has " + eventAddon + "?";
 
-        if (spellType == AbilityNames.DASHSLASH) //cause team cherry hates consistency
-        {
-            state = "Dash Slash Ready";
-        }
+        string state = GetHasStateName(spellType);
 
         string fsmName = getFSMName(spellType);
         if (fsmName == "") { LogError("Base Spell " + spellType + " not equipped."); return; }
@@ -229,7 +207,7 @@ public static class SpellHelper
         FsmState activeState = fsm.GetState(state);
         if (activeState == null) { return; }
 
-        activeState.ChangeTransition(baseSpellEvents[spellType], baseSpellStates[spellType]);
+        activeState.ChangeTransition(AbilityFSMs.baseSpellEvents[spellType], AbilityFSMs.baseSpellStates[spellType]);
         equippedSpells[spellType] = null;
     }
 

@@ -1,6 +1,5 @@
 ﻿using SpellChanger.Utils;
 using Vasi;
-using static UnityEngine.UI.Selectable;
 
 namespace SpellChanger;
 /// <summary>

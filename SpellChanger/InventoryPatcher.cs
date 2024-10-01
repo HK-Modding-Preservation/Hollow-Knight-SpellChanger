@@ -1,25 +1,11 @@
 ﻿using HutongGames.PlayMaker.Actions;
 using SpellChanger.Utils;
-using System.Drawing;
-using UnityEngine;
 using Vasi;
 
 namespace SpellChanger;
 
 internal class InventoryPatcher
 {
-    internal static Dictionary<string, string> baseNAStrings = new Dictionary<string, string>()
-    {
-        { AbilityNames.DASHSLASH, "UPPER" },
-        { AbilityNames.CYCLONESLASH, "CYCLONE" },
-        { AbilityNames.GREATSLASH, "DASH" }
-    };
-    internal static Dictionary<string, string> NAIconStrings = new Dictionary<string, string>()
-    {
-        { AbilityNames.DASHSLASH, "Uppercut" },
-        { AbilityNames.CYCLONESLASH, "Cyclone" },
-        { AbilityNames.GREATSLASH, "Dash" }
-    };
     internal static Sprite cycloneIcon;
     internal static Sprite dashIcon;
     internal static Sprite greatIcon;
@@ -178,7 +164,7 @@ internal class InventoryPatcher
 
     private static GameObject GetIconNA(string type, PlayMakerFSM UiInventoryFSM)
     {
-        string typeNA = NAIconStrings[type];
+        string typeNA = AbilityFSMs.NAIconAlias[type];
 
         if (typeNA == null) { LogError("Icon type " + type + "not found."); }
 
@@ -259,8 +245,8 @@ internal class InventoryPatcher
 
         if (equippedSpell == null)
         {
-            setstringName.setValue = "INV_NAME_ART_" + baseNAStrings[type];
-            setstringDesc.setValue = "INV_DESC_ART_" + baseNAStrings[type];
+            setstringName.setValue = "INV_NAME_ART_" + AbilityFSMs.baseNAAlias[type];
+            setstringDesc.setValue = "INV_DESC_ART_" + AbilityFSMs.baseNAAlias[type];
         }
         else
         {
