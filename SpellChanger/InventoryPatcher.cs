@@ -182,15 +182,16 @@ internal class InventoryPatcher
         SpriteRenderer renderer = NAIcon.GetComponent<SpriteRenderer>();
         if (renderer == null) { LogError("SpriteRenderer not found in icon " + type); return; }
 
+        InvItemDisplay display = NAIcon.GetComponent<InvItemDisplay>();
+
         CustomSpell equippedSpell = SpellHelper.equippedSpells[type];
         if (equippedSpell == null) { 
             renderer.sprite = regularNAIcons[type];
+            display.activeSprite = regularNAIcons[type];
             return;
         }
 
         renderer.sprite = equippedSpell.sprites[0];
-
-        InvItemDisplay display = NAIcon.GetComponent<InvItemDisplay>();
         display.activeSprite = equippedSpell.sprites[0];
     }
 

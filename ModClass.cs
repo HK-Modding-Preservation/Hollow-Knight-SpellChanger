@@ -9,7 +9,7 @@ public class SpellChangerMod : Mod
         Instance = this;
     }
 
-    public override string GetVersion() => "1.0.0.1";
+    public override string GetVersion() => "1.0.0.2";
 
     public override void Initialize(Dictionary<string, Dictionary<string, GameObject>> preloadedObjects)
     {
